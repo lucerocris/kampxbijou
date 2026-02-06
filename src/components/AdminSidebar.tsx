@@ -41,7 +41,7 @@ export default function AdminSidebar() {
             {/* This section hides in collapsed icon mode */}
             <div className="grid flex-1 text-left group-data-[collapsible=icon]:hidden">
               <span className="truncate text-xs font-semibold">
-                Pocket Concerts
+                Bead & Brew
               </span>
               <span className="text-sidebar-foreground/70 truncate text-xs">
                 Registration System

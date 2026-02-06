@@ -12,20 +12,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle2, Loader2 } from 'lucide-react';
 
 type Step1Data = {
   name: string;
   email: string;
-  paymentMethod: 'gcash' | 'bank' | '';
+  paymentMethod: 'e-wallet';
 };
 
 async function fileToDataUrl(file: File): Promise<string> {
@@ -39,7 +32,7 @@ async function fileToDataUrl(file: File): Promise<string> {
 
 type UploadProofResponse =
   | { ok: true; key: string; url: string }
-  | { ok: false; error: string };
+  | { ok: false, error: string };
 
 function getUploadErrorMessage(data: unknown): string {
   if (typeof data === 'object' && data !== null && 'error' in data) {
@@ -77,7 +70,7 @@ export default function RegistrationForm() {
   const [step1, setStep1] = useState<Step1Data>({
     name: '',
     email: '',
-    paymentMethod: '',
+    paymentMethod: 'e-wallet',
   });
 
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
@@ -97,17 +90,16 @@ export default function RegistrationForm() {
   }, [paymentProofObjectUrl]);
 
   const qrSrc = useMemo(() => {
-    if (step1.paymentMethod === 'gcash') return '/gcash_qr.jpg';
-    if (step1.paymentMethod === 'bank') return '/bank_qr.jpg';
-    return '';
-  }, [step1.paymentMethod]);
+    // Payment method selection removed; default to PayNow (GCash).
+    return 'https://lucerocris.sgp1.cdn.digitaloceanspaces.com/Screenshot_20260206_182220.png';
+  }, []);
 
   const handlePayNow = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    const { name, email, paymentMethod } = step1;
-    if (!name || !email || !paymentMethod) {
+    const { name, email } = step1;
+    if (!name || !email) {
       setError('Please complete all required fields before continuing.');
       return;
     }
@@ -120,7 +112,7 @@ export default function RegistrationForm() {
     setError('');
 
     const { name, email, paymentMethod } = step1;
-    if (!name || !email || !paymentMethod) {
+    if (!name || !email) {
       setError('Missing registration details. Please go back and try again.');
       setStep(1);
       return;
@@ -188,7 +180,7 @@ export default function RegistrationForm() {
           <CardDescription className="text-center text-muted-foreground">
             {step === 1
               ? 'Enter your details to proceed to payment.'
-              : 'Scan the QR and upload your proof of payment.'}
+              : 'Scan the PayNow QR and upload your proof of payment.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -220,34 +212,10 @@ export default function RegistrationForm() {
                   type="email"
                   placeholder="juan@example.com"
                   value={step1.email}
-                  onChange={(e) =>
-                    setStep1({ ...step1, email: e.target.value })
-                  }
+                  onChange={(e) => setStep1({ ...step1, email: e.target.value })}
                   required
                   disabled={isSubmitting}
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="paymentMethod">Payment Method *</Label>
-                <Select
-                  value={step1.paymentMethod}
-                  onValueChange={(value) =>
-                    setStep1({
-                      ...step1,
-                      paymentMethod: value as Step1Data['paymentMethod'],
-                    })
-                  }
-                  disabled={isSubmitting}
-                >
-                  <SelectTrigger id="paymentMethod">
-                    <SelectValue placeholder="Choose payment method" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="gcash">GCash</SelectItem>
-                    <SelectItem value="bank">Bank Transfer</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
 
               <Button type="submit" className="w-full" disabled={isSubmitting}>
@@ -257,7 +225,7 @@ export default function RegistrationForm() {
           ) : (
             <form onSubmit={handleSubmitProof} className="space-y-4">
               <div className="rounded-lg border bg-background p-3">
-                <div className="text-sm font-medium mb-2">Scan this QR</div>
+                <div className="text-sm font-medium mb-2">Scan this PayNow QR</div>
                 {qrSrc ? (
                   <div className="flex items-center justify-center">
                     <Image
@@ -270,7 +238,7 @@ export default function RegistrationForm() {
                   </div>
                 ) : (
                   <div className="text-sm text-muted-foreground">
-                    No QR available. Please go back and choose a payment method.
+                    No QR available. Please try again later.
                   </div>
                 )}
               </div>

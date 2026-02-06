@@ -111,7 +111,9 @@ export async function POST(request: NextRequest) {
     const normalizedName = normalizeName(name);
     const normalizedEmail = normalizeEmail(email);
 
-    if (!normalizedName || !normalizedEmail || !paymentMethod) {
+    const normalizedPaymentMethod = String(paymentMethod ?? 'gcash');
+
+    if (!normalizedName || !normalizedEmail || !normalizedPaymentMethod) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -122,7 +124,7 @@ export async function POST(request: NextRequest) {
       .insert({
         name: normalizedName,
         email: normalizedEmail,
-        payment_method: String(paymentMethod),
+        payment_method: normalizedPaymentMethod,
         payment_proof_url: paymentProofUrl ? String(paymentProofUrl) : null,
         verification: 'pending',
       })
