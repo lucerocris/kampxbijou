@@ -44,6 +44,17 @@ function log(level: 'log' | 'warn' | 'error', payload: Record<string, unknown>) 
   console[level](line);
 }
 
+function isLikelyAwsRegion(region: string): boolean {
+  // Minimal heuristic: AWS regions are like us-east-1, ap-southeast-1, etc.
+  return /^[a-z]{2}-[a-z]+-\d$/.test(region);
+}
+
+function normalizeEndpoint(endpoint?: string): string | undefined {
+  if (!endpoint) return undefined;
+  if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) return endpoint;
+  return `https://${endpoint}`;
+}
+
 function serializeAwsError(err: unknown): Record<string, unknown> {
   if (!err || typeof err !== 'object') return { raw: err };
   const e = err as AwsSdkErrorLike;
@@ -75,38 +86,55 @@ export async function uploadToS3(
   const bucket = config?.bucket || process.env.S3_BUCKET;
   const publicBaseUrl = config?.publicBaseUrl || process.env.S3_PUBLIC_BASE_URL;
   const region = process.env.S3_REGION || 'sgp1';
-  const endpoint = process.env.S3_ENDPOINT;
+  const endpointRaw = process.env.S3_ENDPOINT;
+  const endpoint = normalizeEndpoint(endpointRaw);
   const forcePathStyle = process.env.S3_FORCE_PATH_STYLE === 'true';
 
   if (!bucket) throw new Error('S3_BUCKET is not configured');
   if (!publicBaseUrl) throw new Error('S3_PUBLIC_BASE_URL is not configured');
 
+  // If the region isn't an AWS-looking region, enforce an explicit endpoint.
+  // Otherwise, the SDK may construct an invalid hostname like: s3.sgp1.amazonaws.com
+  if (!isLikelyAwsRegion(region) && !endpoint) {
+    const msg =
+      `S3_ENDPOINT is required when using non-AWS region \`${region}\`. ` +
+      `Set S3_ENDPOINT (e.g., https://sgp1.digitaloceanspaces.com).`;
+
+    log('error', {
+      event: 's3.config.error',
+      reqId,
+      region,
+      endpoint: null,
+      message: msg,
+    });
+
+    throw new Error(msg);
+  }
+
   // Initialize S3 client (Works for AWS and DigitalOcean Spaces)
   const s3Client = config?.s3 || new S3Client({
     region,
-    endpoint, // e.g., https://sgp1.digitaloceanspaces.com
+    endpoint,
     credentials: {
       accessKeyId: process.env.S3_ACCESS_KEY_ID!,
       secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
     },
-    // DigitalOcean requires path style (bucket is in the path, not subdomain) for some regions,
-    // though SDK v3 handles this smarter. Safe to keep true or auto.
     forcePathStyle,
   });
 
-  if (debug) {
-    log('log', {
-      event: 's3.config',
-      reqId,
-      bucket,
-      publicBaseUrl,
-      region,
-      endpoint: endpoint ?? null,
-      forcePathStyle,
-      hasAccessKeyId: Boolean(process.env.S3_ACCESS_KEY_ID),
-      hasSecretAccessKey: Boolean(process.env.S3_SECRET_ACCESS_KEY),
-    });
-  }
+  // Endpoint is critical; log a safe config line even when debug is off.
+  log(debug ? 'log' : 'warn', {
+    event: 's3.config',
+    reqId,
+    bucket,
+    publicBaseUrl,
+    region,
+    endpoint: endpoint ?? null,
+    endpointFromEnv: Boolean(endpointRaw),
+    forcePathStyle,
+    hasAccessKeyId: Boolean(process.env.S3_ACCESS_KEY_ID),
+    hasSecretAccessKey: Boolean(process.env.S3_SECRET_ACCESS_KEY),
+  });
 
   const started = Date.now();
 
@@ -155,6 +183,7 @@ export async function uploadToS3(
     const serialized = serializeAwsError(err);
     const code = (serialized as { code?: unknown }).code;
     const httpStatusCode = (serialized as { httpStatusCode?: unknown }).httpStatusCode;
+    const message = (serialized as { message?: unknown }).message;
 
     // Always log the core error details (safe), even when not in debug.
     log('error', {
@@ -169,13 +198,15 @@ export async function uploadToS3(
         stack: debug ? (serialized as { stack?: unknown }).stack : undefined,
       },
       hint:
-        code === 'AccessDenied' || httpStatusCode === 403
-          ? 'AccessDenied/403. Check credentials, bucket policy, and (if using ACL) whether bucket ownership disables ACLs.'
-          : code === 'InvalidAccessKeyId'
-            ? 'Invalid access key id.'
-            : code === 'SignatureDoesNotMatch'
-              ? 'Signature mismatch. Check secret, region, endpoint, and system clock.'
-              : undefined,
+        code === 'ENOTFOUND' || (typeof message === 'string' && message.includes('getaddrinfo ENOTFOUND'))
+          ? 'DNS/endpoint issue. Verify S3_ENDPOINT and outbound DNS from the runtime.'
+          : code === 'AccessDenied' || httpStatusCode === 403
+            ? 'AccessDenied/403. Check credentials, bucket policy, and (if using ACL) whether bucket ownership disables ACLs.'
+            : code === 'InvalidAccessKeyId'
+              ? 'Invalid access key id.'
+              : code === 'SignatureDoesNotMatch'
+                ? 'Signature mismatch. Check secret, region, endpoint, and system clock.'
+                : undefined,
     });
 
     // Re-throw to let the API handler manage the error response
