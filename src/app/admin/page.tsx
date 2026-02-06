@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 
 export default function AdminLogin() {
   const [password, setPassword] = useState('');
@@ -10,7 +9,14 @@ export default function AdminLogin() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (password === 'admin123') {
+    const expected = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
+
+    if (!expected) {
+      alert('Missing NEXT_PUBLIC_ADMIN_PASSWORD env var');
+      return;
+    }
+
+    if (password === expected) {
       localStorage.setItem('isAdmin', 'true');
       router.push('/admin/registrations');
     } else {
@@ -24,14 +30,7 @@ export default function AdminLogin() {
         onSubmit={handleLogin}
         className="bg-white p-6 rounded-xl shadow-md w-full max-w-sm relative h-50 flex flex-col gap-4 justify-between"
       >
-        <Image
-          src="/pocketConcertsLogo.jpg"
-          alt="pc logo"
-          width={30}
-          height={200}
-          className="absolute"
-        />
-        <h2 className="text-xl font-bold text-center">Admin Login</h2>
+        <h2 className="text-xl font-bold text-center text-[#920d25]">Admin Login</h2>
         <div className="flex flex-col gap-4">
           <input
             type="password"
@@ -40,7 +39,7 @@ export default function AdminLogin() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          <button className="bg-black text-white p-2 rounded w-full cursor-pointer">
+          <button className="bg-[#920d25] text-white p-2 rounded w-full cursor-pointer">
             Login
           </button>
         </div>

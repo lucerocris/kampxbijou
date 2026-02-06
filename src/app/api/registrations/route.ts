@@ -5,6 +5,7 @@ export type RegistrationRecord = {
   id: string;
   name: string;
   email: string;
+  socialAccount?: string;
   paymentMethod: string;
   paymentProofUrl?: string;
   verification: 'pending' | 'accepted' | 'rejected';
@@ -15,6 +16,7 @@ type DbRegistrationRow = {
   id: string;
   name: string;
   email: string;
+  social_account: string | null;
   payment_method: string;
   payment_proof_url: string | null;
   verification: 'pending' | 'accepted' | 'rejected';
@@ -26,6 +28,7 @@ function toApiRecord(row: DbRegistrationRow): RegistrationRecord {
     id: row.id,
     name: row.name,
     email: row.email,
+    socialAccount: row.social_account ?? undefined,
     paymentMethod: row.payment_method,
     paymentProofUrl: row.payment_proof_url ?? undefined,
     verification: row.verification,
@@ -81,7 +84,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('registrations')
-      .select('id,name,email,payment_method,payment_proof_url,verification,created_at')
+      .select('id,name,email,social_account,payment_method,payment_proof_url,verification,created_at')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -106,10 +109,11 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, email, paymentMethod, paymentProofUrl } = body ?? {};
+    const { name, email, socialAccount, paymentMethod, paymentProofUrl } = body ?? {};
 
     const normalizedName = normalizeName(name);
     const normalizedEmail = normalizeEmail(email);
+    const normalizedSocialAccount = String(socialAccount ?? '').trim();
 
     const normalizedPaymentMethod = String(paymentMethod ?? 'gcash');
 
@@ -124,11 +128,12 @@ export async function POST(request: NextRequest) {
       .insert({
         name: normalizedName,
         email: normalizedEmail,
+        social_account: normalizedSocialAccount ? normalizedSocialAccount : null,
         payment_method: normalizedPaymentMethod,
         payment_proof_url: paymentProofUrl ? String(paymentProofUrl) : null,
         verification: 'pending',
       })
-      .select('id,name,email,payment_method,payment_proof_url,verification,created_at')
+      .select('id,name,email,social_account,payment_method,payment_proof_url,verification,created_at')
       .single();
 
     if (error) {
@@ -195,7 +200,7 @@ export async function PATCH(request: NextRequest) {
       .from('registrations')
       .update(update)
       .eq('id', String(id))
-      .select('id,name,email,payment_method,payment_proof_url,verification,created_at')
+      .select('id,name,email,social_account,payment_method,payment_proof_url,verification,created_at')
       .single();
 
     if (error) {

@@ -20,6 +20,7 @@ export function RegistrationsTableViewOptions<TData>({
     const columnDisplayNames: Record<string, string> = {
         select: 'Select',
         name: 'Registrant',
+        socialAccount: 'Social',
         paymentMethod: 'Payment Method',
         paymentProofUrl: 'Payment Proof',
         verification: 'Verification',

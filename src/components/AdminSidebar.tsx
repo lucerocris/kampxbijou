@@ -30,7 +30,7 @@ export default function AdminSidebar() {
             {/* Icon stays visible in collapsed state */}
             <div className="flex size-8 items-center justify-center">
               <Image
-                src="/pocketConcertsLogo.jpg"
+                src="/kampxbijouLogo.png"
                 alt="Logo"
                 width={20}
                 height={20}

@@ -38,6 +38,7 @@ export interface Registration {
   id: string;
   name: string;
   email: string;
+  socialAccount?: string;
   paymentMethod: string;
   paymentProofUrl?: string;
   verification: 'pending' | 'accepted' | 'rejected';
@@ -119,9 +120,25 @@ export const registrationColumns: ColumnDef<Registration>[] = [
     filterFn: (row, id, value) => {
       const name = (row.getValue(id) as string) ?? '';
       const email = row.original.email ?? '';
+      const social = row.original.socialAccount ?? '';
       const q = (value as string)?.toLowerCase() ?? '';
-      return name.toLowerCase().includes(q) || email.toLowerCase().includes(q);
+      return (
+        name.toLowerCase().includes(q) ||
+        email.toLowerCase().includes(q) ||
+        social.toLowerCase().includes(q)
+      );
     },
+  },
+  {
+    accessorKey: 'socialAccount',
+    id: 'socialAccount',
+    header: 'Social',
+    cell: ({ row }) => {
+      const value = (row.getValue('socialAccount') as string | undefined) ?? '';
+      if (!value) return <span className="pl-3 text-sm text-muted-foreground">—</span>;
+      return <span className="pl-3 text-sm truncate max-w-[220px] block">{value}</span>;
+    },
+    enableSorting: false,
   },
   {
     accessorKey: 'paymentMethod',
