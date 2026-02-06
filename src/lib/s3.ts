@@ -12,107 +12,52 @@ interface S3Config {
   s3?: S3Client;
 }
 
-function truthyEnv(value: string | undefined): boolean {
-  return value === '1' || value === 'true' || value === 'TRUE' || value === 'yes' || value === 'YES';
-}
-
-function shouldSendPublicReadACL(): boolean {
-  // Back-compat / explicit overrides:
-  // - If ACLs are disabled, never send.
-  // - If S3_ENABLE_ACL is set, respect it.
-  // - Otherwise default to sending ACL to make the object public.
-  if (truthyEnv(process.env.S3_DISABLE_ACL)) return false;
-  if (process.env.S3_ENABLE_ACL != null) return truthyEnv(process.env.S3_ENABLE_ACL);
-  return true;
-}
-
 export async function uploadToS3(
     params: UploadParams,
     config?: S3Config
 ): Promise<{ key: string; url: string }> {
+  // Load config from params or environment variables
   const bucket = config?.bucket || process.env.S3_BUCKET;
   const publicBaseUrl = config?.publicBaseUrl || process.env.S3_PUBLIC_BASE_URL;
+  const region = process.env.S3_REGION || 'sgp1';
 
-  if (!bucket) {
-    throw new Error('S3_BUCKET is not configured');
-  }
+  if (!bucket) throw new Error('S3_BUCKET is not configured');
+  if (!publicBaseUrl) throw new Error('S3_PUBLIC_BASE_URL is not configured');
 
-  if (!publicBaseUrl) {
-    throw new Error('S3_PUBLIC_BASE_URL is not configured');
-  }
-
-  // Initialize S3 client with DigitalOcean Spaces settings
+  // Initialize S3 client (Works for AWS and DigitalOcean Spaces)
   const s3Client = config?.s3 || new S3Client({
-    region: process.env.S3_REGION || 'sgp1',
-    endpoint: process.env.S3_ENDPOINT,
+    region,
+    endpoint: process.env.S3_ENDPOINT, // e.g., https://sgp1.digitaloceanspaces.com
     credentials: {
       accessKeyId: process.env.S3_ACCESS_KEY_ID!,
       secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
     },
+    // DigitalOcean requires path style (bucket is in the path, not subdomain) for some regions,
+    // though SDK v3 handles this smarter. Safe to keep true or auto.
     forcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true',
   });
 
-  const wantAcl = shouldSendPublicReadACL();
-
-  const basePutParams = {
-    Bucket: bucket,
-    Key: params.key,
-    Body: params.body,
-    ContentType: params.contentType,
-  };
-
-  const sendWithOptionalAcl = async (includeAcl: boolean) => {
-    const command = new PutObjectCommand({
-      ...basePutParams,
-      ...(includeAcl ? { ACL: 'public-read' } : {}),
-    });
-    return s3Client.send(command);
-  };
-
   try {
-    await sendWithOptionalAcl(wantAcl);
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: params.key,
+      Body: params.body,
+      ContentType: params.contentType,
+      ACL: 'public-read', // <--- Forced Public Access
+    });
+
+    await s3Client.send(command);
+
+    // Construct the public URL
+    // Removes trailing slash from base and ensures single slash before key
+    const normalizedBase = publicBaseUrl.replace(/\/$/, '');
+    const url = `${normalizedBase}/${params.key}`;
+
+    return { key: params.key, url };
+
   } catch (err) {
-    const error = err as Error & { Code?: string; name?: string; $metadata?: any };
-
-    // Common cases when ACLs are disabled: AccessDenied / InvalidRequest
-    // If we attempted ACL and it failed, retry once without ACL.
-    if (wantAcl) {
-      const code = (error as any).Code || (error as any).code || error.name;
-      const retryableAclFailure =
-        code === 'AccessDenied' ||
-        code === 'InvalidRequest' ||
-        code === 'InvalidArgument' ||
-        code === 'NotImplemented';
-
-      if (retryableAclFailure) {
-        console.warn('[s3] Upload with ACL failed; retrying without ACL', {
-          message: error.message,
-          code,
-          metadata: error.$metadata,
-        });
-
-        await sendWithOptionalAcl(false);
-      } else {
-        console.error('[s3] Upload failed:', {
-          message: error.message,
-          code,
-          metadata: error.$metadata,
-        });
-        throw error;
-      }
-    } else {
-      console.error('[s3] Upload failed:', {
-        message: error.message,
-        code: error.Code,
-        metadata: error.$metadata,
-      });
-      throw error;
-    }
+    console.error('[s3] Upload failed:', err);
+    // Re-throw to let the API handler manage the error response
+    throw err;
   }
-
-  // Build URL, avoiding double slashes
-  const baseUrl = publicBaseUrl.replace(/\/$/, '');
-  const url = `${baseUrl}/${params.key}`;
-
-  return { key: params.key, url };
 }
